@@ -32,63 +32,54 @@ exit_abnormal() {
 ### Break sign catch for line break fix
 trap exit_abnormal SIGINT SIGTERM
 
-BAR="========================================================================================================================================================="
-{
-echo ${BAR}
-echo "   [:: dbt Models ::]"
-echo ${BAR}
-dbt ls --models | awk '{printf "%.2d | "$0"\n",NR-1}' | sed -e 's/^00/  /g'
-} >| ${Tmp_modelsfile}
+print_dashboard() {
+	BAR="========================================================================================================================================================="
+	{
+	echo ${BAR}
+	echo "   [:: dbt Models ::]"
+	echo ${BAR}
+	dbt ls | awk '{printf "%.2d | "$0"\n",NR-1}' | sed -e 's/^00/  /g'
+	} >| ${Tmp_modelsfile}
 
-{
-echo ""
-echo ""
-echo ${BAR}
-echo "   [:: Recent Runs ::]"
-echo ${BAR}
-dbt debug | awk '{printf "%.2d | "$0"\n",NR-1}' | sed -e 's/^00/  /g'
-} >| ${Tmp_runsfile}
+	{
+	echo ""
+	echo ""
+	echo ${BAR}
+	echo "   [:: Recent Runs ::]"
+	echo ${BAR}
+	dbt debug | awk '{printf "%.2d | "$0"\n",NR-1}' | sed -e 's/^00/  /g'
+	} >| ${Tmp_runsfile}
 
-if [[ $osv = "osx" ]]; then
-	for tmpfiles in ${Tmp_modelsfile} ${Tmp_runsfile}; do
-		sed -i "" 's/^0 /  /g' ${tmpfiles}
-	done
-else
-	for tmpfiles in ${Tmp_modelsfile} ${Tmp_runsfile}; do
-		sed -i 's/^0 /  /g' ${tmpfiles}
-	done
-fi
+	if [[ $osv = "osx" ]]; then
+		for tmpfiles in ${Tmp_modelsfile} ${Tmp_runsfile}; do
+			sed -i "" 's/^0 /  /g' ${tmpfiles}
+		done
+	else
+		for tmpfiles in ${Tmp_modelsfile} ${Tmp_runsfile}; do
+			sed -i 's/^0 /  /g' ${tmpfiles}
+		done
+	fi
 
-Print_screen() {
-## Print screen
-clear -x
-cat ${Tmp_modelsfile} ${Tmp_runsfile}
+	## Print screen
+	clear -x
+	cat ${Tmp_modelsfile} ${Tmp_runsfile}
 
-echo ""
-echo ""
-echo "======================================"
-echo " Please Insert a command as below  :) "
-echo " Run the models -------- [ run ] | Build models ------------ [ build ] | Test models ----------- [ test ]"
-echo " Debug project --------- [ debug ] | Clean project --------- [ clean ] | Exit ------------------- Ctrl+c"
-echo "======================================"
-printf "CMD>> "
+	echo ""
+	echo ""
+	echo "======================================"
+	echo " Please Insert a command as below  :) "
+	echo " Run the models -------- [ run ] | Build models ------------ [ build ] | Test models ----------- [ test ]"
+	echo " Debug project --------- [ debug ] | Clean project --------- [ clean ] | Exit ------------------- Ctrl+c"
+	echo "======================================"
+	printf "CMD>> "
 }
 
-if [[ ${extra_input} = "" ]]; then
-	Print_screen
-	read -r CommandX
-else
-	CommandX=${extra_input}
-fi
-
-## Make a number & array
-ModelNum=$(tail -1 ${Tmp_modelsfile} | awk '{print $1}')
-RunNum=$(tail -1 ${Tmp_runsfile} | awk '{print $1}')
-ModelArray=($(cat ${Tmp_modelsfile} | awk '{print $3}' | tail -n +4))
-
-## Function for dbt commands
 run_models() {
-	dbt run --models ${ModelArray[$1]}
+	if [ -z "$1" ]; then
+		dbt run
+	else
+		dbt run --models $1
+	fi
 }
 
 build_models() {
@@ -131,39 +122,52 @@ test_models() {
 	dbt test --models ${ModelArray[$1]}
 }
 
-case "${CommandX}" in
-	build)
-		build_models
-		;;
-	run)
-		echo " == Please insert a model number [01 - ${ModelNum} ]"
-		read -r ModelNum
-		if [[ ${ModelNum} != "" ]]; then
-			run_models ${ModelNum}
-		else
-			echo " == No Model ID == "
-		fi
-		;;
-	debug)
-		debug_project
-		;;
-	clean)
-		clean_project
-		;;
-	test)
-		echo " == Please insert a model number to test [01 - ${ModelNum} ]"
-		read -r ModelNum
-		if [[ ${ModelNum} != "" ]]; then
-			test_models ${ModelNum}
-		else
-			echo " == No Model ID == "
-		fi
-		;;
-	*)
-		dbt ${CommandX}
-		;;
-esac
+while true; do
+	print_dashboard
 
-if [[ ${extra_input} = "" ]]; then
-	${exefile}
-fi
+	if [[ ${extra_input} = "" ]]; then
+		read -r CommandX
+	else
+		CommandX=${extra_input}
+	fi
+
+	## Make a number & array
+	ModelNum=$(tail -1 ${Tmp_modelsfile} | awk '{print $1}')
+	RunNum=$(tail -1 ${Tmp_runsfile} | awk '{print $1}')
+	ModelArray=($(cat ${Tmp_modelsfile} | awk '{print $3}' | tail -n +4))
+
+	## Handle empty input
+	if [[ -z "${CommandX}" ]]; then
+		continue
+	fi
+
+	case "${CommandX}" in
+		build)
+			build_models
+			;;
+		run)
+			echo " == Please insert a model name to run or press Enter to run all models =="
+			read -r ModelName
+			run_models ${ModelName}
+			;;
+		debug)
+			debug_project
+			;;
+		clean)
+			clean_project
+			;;
+		test)
+			echo " == Please insert a model number to test [01 - ${ModelNum} ]"
+			read -r ModelNum
+			if [[ ${ModelNum} != "" ]]; then
+				test_models ${ModelNum}
+			else
+				echo " == No Model ID == "
+			fi
+			;;
+		*)
+			dbt ${CommandX}
+			;;
+	esac
+
+done
